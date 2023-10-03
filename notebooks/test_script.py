@@ -23,3 +23,7 @@ import sys
 sys.modules.values()
 
 from src.utils import *
+
+def test_func():
+    print('test_func')
+    
