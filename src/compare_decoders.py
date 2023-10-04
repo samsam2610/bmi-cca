@@ -31,25 +31,129 @@ def split_range_into_groups(list_of_numbers, num_groups, step=1):
     return groups, groups_index
 
 
+def load_data_from_folder(path, exporting_graph=False, raw_data=False):
+    """
+    Loads data from files in the specified folder path and returns a dictionary of data objects.
+
+    Parameters:
+    path (str): The path to the folder containing the data files.
+    exporting_graph (bool, optional): Whether to export a graph. Defaults to False.
+    raw_data (bool, optional): Whether to load raw data. Defaults to False.
+
+    Returns:
+    data_dict: contains all the cort_processor objects
+    sorted_keys: list of keys for the above dict sorted by dates
+
+    Examples:
+    path = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/remove_channels_pickles/n9_removed_channels'
+    data_dict, sorted_keys = load_data_from_folder(path=path)
+    """
+    filenames = os.listdir(path)
+    
+    temp_datasets = []
+    temp_var_names = []
+    data_dict = {}
+    file_list = []
+    plt.close("all")
+    ignore_extensions = ('.pdf', '.DS_Store')
+    for file in filenames:
+        if file.endswith(ignore_extensions):
+            continue  # ignore this file
+        file_list.append(os.path.splitext(file)[0])
+        
+        current_path = path + '/' + file
+        
+        if raw_data:
+            cp = CortProcessor(current_path)  # Load mat file from Filippe data
+        else:
+            with open(current_path, 'rb') as inp:
+                cp = pickle.load(inp)
+        
+        # Add data object to dict with respected name
+        dict_name = '_'.join(os.path.splitext(file)[0].split('_')[:2])
+        data_dict[dict_name] = cp
+        
+        if exporting_graph:
+            h, vaffy, test_x, test_y = cp.decode_angles()
+            predic = test_wiener_filter(test_x, h)
+            samples = test_x.shape[0]
+            
+            # Font data for exporting figure
+            plt.rcParams['pdf.fonttype'] = 42
+            plt.rcParams['ps.fonttype'] = 42
+            
+            ts = np.linspace(0, (samples * 50) / 1000, samples)
+            
+            fig, ax = plt.subplots()
+            fig.set_size_inches(10, 2)
+            ax.plot(ts, test_y[:, 1], color='black')
+            ax.plot(ts, predic[:, 1], color='red')
+            ax.set_xlim((10, 15))
+            ax.axis('off')
+            print(vaf(predic[:, 1], test_y[:, 1]))
+            
+            current_pdf_file = current_path.replace(".mat", ".pdf")
+    
+    from datetime import datetime
+    
+    keys = list(data_dict.keys())  # get a list of all keys in the dictionary
+    sorted_keys = sorted(keys, key=lambda x: datetime.strptime(x.split('_')[1], '%y%m%d'))
+    print(sorted_keys)
+    
+    return data_dict, sorted_keys
+
+
 class DecodersComparison:
-    def __init__(self, cp1, cp2, subsample_list, step=0.005, pca_dims=8, split_ratio=0.8, num_processes=6,
-                 multiThread=False, multiProcess=False):
-        
-        self.cp1 = cp1
-        
-        self.cp2_original = cp2
-        self.cp2 = copy.deepcopy(self.cp2_original)
-        self.cp2_test = copy.deepcopy(self.cp2_original)
+    def __init__(self, cp1_index, cp2_index, subsample_list, path=None, data_dict=None, sorted_keys=None, step=0.005,
+                 pca_dims=8, split_ratio=0.8, num_processes=6, multiThread=False, multiProcess=False):
         
         self.pca_dims = pca_dims
         self.split_ratio = split_ratio
         self.subsample_list = subsample_list
         self.step = step
         
-        # Day-0 decoder stuffs
-        self.day0_decoder, self.day0_transformer, self.day0_decoder_no_offset, self.offset, self.day0_decoder_scale = self.get_day0_decoder()
-        self.subsample_subgroups, self.subsample_subgroups_index = split_range_into_groups(subsample_list,
-                                                                                           num_processes)
+        self.cp1 = None
+        self.cp2 = None
+        self.cp2_original = None
+        self.cp2_test = None
+        
+        # Load data
+        # If path is specified, load data from folder and ignore data_dict and sorted_keys
+        if path is not None:
+            self.data_dict, self.sorted_keys = load_data_from_folder(path=path)
+            self.assign_data(cp1_index=cp1_index, cp2_index=cp2_index)
+        else:
+            if data_dict is None or sorted_keys is None:
+                raise Exception("data_dict and sorted_keys must be specified if path is not specified")
+            
+            self.data_dict = data_dict
+            self.sorted_keys = sorted_keys
+            self.assign_data(cp1_index=cp1_index, cp2_index=cp2_index)
+        
+        if self.cp1 is None or self.cp2 is None or self.cp2_test is None:
+            raise Exception("cp1, cp2, and cp2_test must be assigned before running the decoder comparison")
+        else:
+            # Day-0 decoder stuffs
+            self.day0_decoder, self.day0_transformer, self.day0_decoder_no_offset, self.offset, self.day0_decoder_scale = self.get_day0_decoder()
+            self.subsample_subgroups, self.subsample_subgroups_index = split_range_into_groups(subsample_list,
+                                                                                               num_processes)
+        
+        # Score keepers
+        self.fixed_decoder_scores = None
+        self.pca_decoder_scores = None
+        self.cca_decoder_scores = None
+        self.r_scores = None
+        self.pinv_scores = None
+    
+    def load_data(self, path):
+        self.data_dict, self.sorted_keys = load_data_from_folder(path=path)
+    
+    def assign_data(self, cp1_index, cp2_index):
+        self.cp1 = self.data_dict[self.sorted_keys[cp1_index]]
+        self.cp2_original = self.data_dict[self.sorted_keys[cp2_index]]
+        
+        self.cp2 = copy.deepcopy(self.cp2_original)
+        self.cp2_test = copy.deepcopy(self.cp2_original)
     
     # Function to split the data into train and test sets
     def split_data(self):
@@ -373,9 +477,6 @@ class DecodersComparison:
                                         pca_dims=10,
                                         split_ratio=0.8)
         """
-        # Train-Test split
-        cp2_raw = copy.deepcopy(self.cp2_original)
-        cp1_raw = copy.deepcopy(self.cp1)
         
         pca_decoder_scores, cca_decoder_scores, pinv_scores, r_scores, number_of_gaits, fixed_decoder_scores = {}, {}, {}, {}, {}, {}
         
@@ -384,8 +485,8 @@ class DecodersComparison:
             # Create a ThreadPoolExecutor with the desired number of processes
             executor = ThreadPoolExecutor()
             # Submit tasks to the executor
-            futures = [executor.submit(self.process_subsample_data, index_group) for
-                       index_group in range(num_processes)]
+            futures = [executor.submit(self.process_subsample_data, index_group) for index_group in
+                       range(num_processes)]
             # Wait for all tasks to complete and retrieve the results
             for future in as_completed(futures):
                 results.append(future.result())
@@ -394,8 +495,8 @@ class DecodersComparison:
             # Create a ProcessPoolExecutor with the desired number of processes
             executor = ProcessPoolExecutor(max_workers=num_processes)
             # Submit tasks to the executor
-            futures = [executor.submit(self.process_subsample_data, index_group) for
-                       index_group in range(num_processes)]
+            futures = [executor.submit(self.process_subsample_data, index_group) for index_group in
+                       range(num_processes)]
             
             # Wait for all tasks to complete and retrieve the results
             results = [future.result() for future in futures]
@@ -415,9 +516,114 @@ class DecodersComparison:
                 pinv_scores = {**pinv_scores, **score_dict['pinv_scores']}
                 number_of_gaits = {**number_of_gaits, **score_dict['number_of_gaits']}
         
-        # # Create a dictionary to store the scores
+        # Create a dictionary to store the scores
         scores_dict = {'cca_decoder_scores': cca_decoder_scores, 'pca_decoder_scores': pca_decoder_scores,
                        'fixed_decoder_scores': fixed_decoder_scores, 'r_scores': r_scores, 'pinv_scores': pinv_scores,
                        'number_of_gaits': number_of_gaits}
         
+        # Store the scores
+        self.cca_decoder_scores = cca_decoder_scores
+        self.pca_decoder_scores = pca_decoder_scores
+        self.fixed_decoder_scores = fixed_decoder_scores
+        self.r_scores = r_scores
+        self.pinv_scores = pinv_scores
+        
         return scores_dict
+    
+    def plot_vaf_comparison_multiple(self, number_of_gaits, title_str, path, max_gait=65, min_gait=0, ylim=None):
+        """
+        Plots the VAF (Variance Accounted For) comparison for different decoders.
+
+        Parameters:
+        number_of_gaits (int): The number of gaits to plot.
+        title_str (str): The title string for the plot.
+        path (str): The path to save the plot.
+        max_gait (int, optional): The maximum gait number to include. Defaults to 65.
+        ylim (tuple, optional): The limits for the y-axis as a tuple (bottom, top). Defaults to None.
+        fixed_decoder_scores (list, optional): The scores of the fixed decoder. Defaults to None.
+        pca_decoder_scores (list, optional): The scores of the PCA decoder. Defaults to None.
+        cca_decoder_scores (list, optional): The scores of the CCA decoder. Defaults to None.
+        r_scores (list, optional): The scores of the R decoder. Defaults to None.
+        pinv_scores (list, optional): The scores of the pinv decoder. Defaults to None.
+
+        Returns:
+        None
+        """
+        
+        plt.close("all")
+        # Font data for exporting figure
+        plt.rcParams['pdf.fonttype'] = 42
+        plt.rcParams['ps.fonttype'] = 42
+        
+        fig = plt.figure()
+        fig.set_size_inches(15, 5)
+        ax1 = fig.add_subplot(111)
+        x = self.subsample_list
+        if ylim is not None:
+            ax1.set_ylim(bottom=ylim[0], top=ylim[1])
+        else:
+            ax1.set_ylim(bottom=-1, top=1)
+        
+        ax1.set_yticks(np.arange(-1, 1.2, 0.2))  # Set y-axis tick locations
+        
+        # calculate the mean and std of each of the decoder's score
+        num_gaits = []
+        pca_scores_avg, pca_scores_std = [], []
+        cca_scores_avg, cca_scores_std = [], []
+        r_scores_avg, r_scores_std = [], []
+        pinv_scores_avg, pinv_scores_std = [], []
+        fixed_decoder_score_clean = []
+        for i in range(len(self.subsample_list)):
+            num_gaits.append(int(np.average(number_of_gaits[i])))
+            if self.pca_decoder_scores is not None:
+                pca_scores_avg.append(np.average(self.pca_decoder_scores[i]))
+                pca_scores_std.append(np.std(self.pca_decoder_scores[i]))
+            
+            if self.cca_decoder_scores is not None:
+                cca_scores_avg.append(np.average(self.cca_decoder_scores[i]))
+                cca_scores_std.append(np.std(self.cca_decoder_scores[i]))
+            
+            if self.r_scores is not None:
+                r_scores_avg.append(np.average(self.r_scores[i]))
+                r_scores_std.append(np.std(self.r_scores[i]))
+            
+            if self.pinv_scores is not None:
+                pinv_scores_avg.append(np.average(self.pinv_scores[i]))
+                pinv_scores_std.append(np.std(self.pinv_scores[i]))
+            
+            if self.fixed_decoder_scores is not None:
+                if isinstance(self.fixed_decoder_scores, dict):
+                    fixed_decoder_score_clean.append(self.fixed_decoder_scores[i][0])
+                else:
+                    fixed_decoder_score_clean = self.fixed_decoder_scores
+        
+        if self.fixed_decoder_scores is not None:
+            ax1.plot(num_gaits, fixed_decoder_score_clean, '--', color='tab:pink', label='fixed_decoder')
+        if self.pca_decoder_scores is not None:
+            peak = np.full(len(num_gaits), max(pca_scores_avg))
+            ax1.errorbar(num_gaits, pca_scores_avg, yerr=pca_scores_std, marker='o', color='tab:blue',
+                         label='pca decoder')
+            ax1.plot(num_gaits, peak, '--', color='tab:blue', label='max pca decoder')
+        if self.cca_decoder_scores is not None:
+            ax1.errorbar(num_gaits, cca_scores_avg, yerr=cca_scores_std, marker='s', color='tab:green',
+                         label='cca aligned')
+        if self.r_scores is not None:
+            ax1.errorbar(num_gaits, r_scores_avg, yerr=r_scores_std, marker='*', color='tab:orange',
+                         label='preloaded decoder')
+        if self.pinv_scores is not None:
+            ax1.errorbar(num_gaits, pinv_scores_avg, yerr=pinv_scores_std, marker='+', color='tab:purple',
+                         label='pinv decoder')
+        
+        ax1.legend(loc='lower right')
+        
+        if max_gait > max(number_of_gaits):
+            max_gait = max(number_of_gaits)
+        
+        ax1.set_xlim(min_gait, max_gait)
+        ax1.set_xlabel('Number of Gait Cycles Trained On')
+        ax1.set_ylabel('VAF')
+        plt.title(title_str)
+        plt.show()
+        
+        pdf_file_path = os.path.join(path, title_str + '.pdf')
+        plt.savefig(pdf_file_path)
