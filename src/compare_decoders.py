@@ -122,6 +122,7 @@ class DecodersComparison:
         if path is not None:
             self.data_dict, self.sorted_keys = load_data_from_folder(path=path)
             self.assign_data(cp1_index=cp1_index, cp2_index=cp2_index)
+            print(f"Loaded data from {path}")
         else:
             if data_dict is None or sorted_keys is None:
                 raise Exception("data_dict and sorted_keys must be specified if path is not specified")
@@ -129,6 +130,7 @@ class DecodersComparison:
             self.data_dict = data_dict
             self.sorted_keys = sorted_keys
             self.assign_data(cp1_index=cp1_index, cp2_index=cp2_index)
+            print(f"Loaded data from data_dict and sorted_keys")
         
         if self.cp1 is None or self.cp2 is None or self.cp2_test is None:
             raise Exception("cp1, cp2, and cp2_test must be assigned before running the decoder comparison")
@@ -137,6 +139,10 @@ class DecodersComparison:
             self.day0_decoder, self.day0_transformer, self.day0_decoder_no_offset, self.offset, self.day0_decoder_scale = self.get_day0_decoder()
             self.subsample_subgroups, self.subsample_subgroups_index = split_range_into_groups(subsample_list,
                                                                                                num_processes)
+       
+        # Split data
+        # Train-Test split
+        self.percent_data = self.split_data()
         
         # Score keepers
         self.fixed_decoder_scores = None
@@ -145,6 +151,8 @@ class DecodersComparison:
         self.r_scores = None
         self.pinv_scores = None
     
+        print("Finished initializing DecodersComparison object - Test4")
+        
     def load_data(self, path):
         self.data_dict, self.sorted_keys = load_data_from_folder(path=path)
     
@@ -154,6 +162,7 @@ class DecodersComparison:
         
         self.cp2 = copy.deepcopy(self.cp2_original)
         self.cp2_test = copy.deepcopy(self.cp2_original)
+        print('Data assigned!')
     
     # Function to split the data into train and test sets
     def split_data(self):
@@ -309,12 +318,19 @@ class DecodersComparison:
     
     # def process_subsample_data(cp1, cp2_raw, cp2_test_raw, test_y, pca_dims, day0_transformer, day0_decoder, day0_decoder_no_offset, day0_decoder_scale, temp_cca, offset, scaler, index_group, subsample_subgroups, subsample_subgroups_index, percent_data, subsample_list, step, pca_decoder_scores, cca_decoder_scores, pinv_scores, r_scores, number_of_gaits):
     def process_subsample_data(self, index_group):
-        cp1 = copy.deepcopy(self.cp1)
         step = self.step
         pca_dims = self.pca_dims
+        day0_transformer = self.day0_transformer
+        day0_decoder = self.day0_decoder
+        day0_decoder_no_offset = self.day0_decoder_no_offset
+        day0_decoder_scale = self.day0_decoder_scale
+        offset = self.offset
         
         # Train-Test split
-        cp2, cp2_test, percent_data = self.split_data()
+        cp2 = copy.deepcopy(self.cp2)
+        cp2_test = copy.deepcopy(self.cp2_test)
+        cp1 = copy.deepcopy(self.cp1)
+        percent_data = self.percent_data
         
         # prepare copy of data
         cp2_test_raw = copy.deepcopy(cp2_test)
@@ -327,13 +343,9 @@ class DecodersComparison:
         describe_dict(cp2_test.data)
         
         # get day0 decoder weights, scaled + unscaled versions
-        day0_decoder, day0_transformer, day0_decoder_no_offset, offset, day0_decoder_scale = self.get_day0_decoder()
+        # day0_decoder, day0_transformer, day0_decoder_no_offset, offset, day0_decoder_scale = self.get_day0_decoder()
         
         temp_cca = CCAProcessor(cp1, cp2)
-        # scores keeper
-        
-        # transformer keeper
-        # pca_predic, number_of_gaits, cca_transformers, r_predic, pinv_predic_all = {}, {}, {}, {}, {}
         
         # prepare test y data
         test_y = np.squeeze(np.array(cp2_test.data['angles']))
@@ -452,8 +464,7 @@ class DecodersComparison:
         
         return scores_dict
     
-    def compare_decoders(self, subsample_list, multiThread=False, multiProcess=False, num_processes=6, step=0.005,
-                         pca_dims=8, split_ratio=0.8):
+    def compare_decoders(self, multiThread=False, multiProcess=False, num_processes=6):
         """
         Compares the performance of different decoders on the given CortProcessor objects.
 
