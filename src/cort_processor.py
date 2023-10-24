@@ -94,9 +94,9 @@ class CortProcessor:
     #        self.data['original_rates'] = [original_rates]
     #
     def parse_config(self):
-        '''
+        """
         this loads config.yaml file
-        '''
+        """
         try:
             path = self.handler.folder_path
             with open(f"{path}/config.yaml", "r") as stream:
@@ -112,15 +112,15 @@ class CortProcessor:
             print(exc)
     
     def extract_data(self):
-        '''
+        """
         this is called when a CortProcessor is initialized.
-        It extracts raw neuiral,raw angles, and raw coords
+        It extracts raw neural, raw angles, and raw coords
         neural data is saved under CortProcessr.tdt_data
         kinematic data is saved under CortProcessor.kin_data
 
         If you use process cort script, all these attriibutes are overwritten
         since raw data isnt saved after processing.
-        '''
+        """
         print('Extracting data')
         tdt_data_list = []
         raw_ts_list = self.handler.ts_list
@@ -222,7 +222,7 @@ class CortProcessor:
         '''
         save_path = f'{save_path}/{save_name}.pickle'
         with open(save_path, 'wb') as output:
-            pickle.dump(self.data, output, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(self, output, pickle.HIGHEST_PROTOCOL)
         print(f'Processed data saved to {save_path}')
         return 0
             
@@ -332,21 +332,21 @@ class CortProcessor:
         return np.squeeze(rates), np.squeeze(kin)
     
     def stitch_data(self, firing_rates_list, resampled_angles_list):
-        '''
+        """
         deprecated. you can just use np.vstack instead of this
         WARNING: VSTACK WILL NOT BE INDEXED AT PARITY UNLESS THE LAST 10 ENTRIES OF EACH LIST IS OMITTED
-        '''
+        """
         rates = np.vstack(firing_rates_list)
         kin = np.vstack(resampled_angles_list)
         
         return rates, kin
     
     def spectro1(self, window=4, rates=None, plotting=False):
-        '''
-        this makes spectrograms! 
+        """
+        this makes spectrograms!
         currently there is no normalization between channels
-        rate stacking is sliced for index parity with stitch and format 
-        '''
+        rate stacking is sliced for index parity with stitch and format
+        """
         if rates == None:
             rate_append = []
             for i in range(len(self.data['rates'])):
@@ -372,10 +372,10 @@ class CortProcessor:
         return Sxx_sum, t, f
     
     def subsample(self, percent, X=None, Y=None):
-        '''
-        function to subsample RAW data (not gait aligned). 
+        """
+        function to subsample RAW data (not gait aligned).
         we keep it in order since we go by folds.
-        '''
+        """
         if X is None:
             X = self.data['rates']
         if Y is None:
@@ -793,7 +793,7 @@ class CortProcessor:
             end = gait_indices[i + 1]
             start = gait_indices[i]
             phase = np.sin(np.linspace(0.0, 2.0 * math.pi, num=end - start, endpoint=False))
-            phase_list.append(gait)
+            phase_list.append(phase)
         
         return phase_list  # use np.hstack on output to get continuous
     

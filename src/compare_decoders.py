@@ -6,6 +6,7 @@ from sklearn.preprocessing import StandardScaler
 
 from src.utils import *
 from src.wiener_filter import *
+from datetime import datetime
 
 
 def split_range_into_groups(list_of_numbers, num_groups, step=1):
@@ -31,7 +32,8 @@ def split_range_into_groups(list_of_numbers, num_groups, step=1):
     return groups, groups_index
 
 
-def load_data_from_folder(path, exporting_graph=False, raw_data=False):
+def load_data_from_folder(path, exporting_graph=False, raw_data=False,
+                          sorting_func=lambda x: datetime.strptime(x.split('_')[1], '%y%m%d')):
     """
     Loads data from files in the specified folder path and returns a dictionary of data objects.
 
@@ -94,33 +96,52 @@ def load_data_from_folder(path, exporting_graph=False, raw_data=False):
             
             current_pdf_file = current_path.replace(".mat", ".pdf")
     
-    from datetime import datetime
-    
     keys = list(data_dict.keys())  # get a list of all keys in the dictionary
-    sorted_keys = sorted(keys, key=lambda x: datetime.strptime(x.split('_')[1], '%y%m%d'))
-    print(sorted_keys)
+    try:
+        sorted_keys = sorted(keys, key=sorting_func)
+        print(sorted_keys)
+    except Exception as e:
+        sorted_keys = None
+        print('Error sorting keys')
+        print(e)
+        print(keys)
     
     return data_dict, sorted_keys
 
 
 class DecodersComparison:
     def __init__(self, cp1_index, cp2_index, subsample_list, path=None, data_dict=None, sorted_keys=None, step=0.005,
-                 pca_dims=8, split_ratio=0.8, num_processes=6, multiThread=False, multiProcess=False):
+                 pca_dims=8, split_ratio=0.8, num_processes=6, sort_func=None, multiThread=False, multiProcess=False):
         
         self.pca_dims = pca_dims
         self.split_ratio = split_ratio
         self.subsample_list = subsample_list
         self.step = step
         
+        # Data objects
         self.cp1 = None
+        self.cp1_index = cp1_index
         self.cp2 = None
+        self.cp2_index = cp2_index
         self.cp2_original = None
         self.cp2_test = None
+        
+        # Score keepers
+        self.fixed_decoder_scores = None
+        self.pca_decoder_scores = None
+        self.cca_decoder_scores = None
+        self.r_scores = None
+        self.pinv_scores = None
+        self.number_of_gaits = None
+        self.score_dicts = None # this one contains all the above scores for computational purposes
         
         # Load data
         # If path is specified, load data from folder and ignore data_dict and sorted_keys
         if path is not None:
-            self.data_dict, self.sorted_keys = load_data_from_folder(path=path)
+            if sort_func is not None:
+                self.data_dict, self.sorted_keys = load_data_from_folder(path=path, sorting_func=sort_func)
+            else:
+                self.data_dict, self.sorted_keys = load_data_from_folder(path=path)
             self.assign_data(cp1_index=cp1_index, cp2_index=cp2_index)
             print(f"Loaded data from {path}")
         else:
@@ -135,35 +156,57 @@ class DecodersComparison:
         if self.cp1 is None or self.cp2 is None or self.cp2_test is None:
             raise Exception("cp1, cp2, and cp2_test must be assigned before running the decoder comparison")
         else:
-            # Day-0 decoder stuffs
-            self.day0_decoder, self.day0_transformer, self.day0_decoder_no_offset, self.offset, self.day0_decoder_scale = self.get_day0_decoder()
-            self.subsample_subgroups, self.subsample_subgroups_index = split_range_into_groups(subsample_list,
-                                                                                               num_processes)
-       
+            try:
+                self.choose_data_from_list(cp1_list_index=0, cp2_list_index=0)
+                # Day-0 decoder stuffs
+                self.day0_decoder, self.day0_transformer, self.day0_decoder_no_offset, self.offset, self.day0_decoder_scale = self.get_day0_decoder()
+                self.subsample_subgroups, self.subsample_subgroups_index = split_range_into_groups(subsample_list, num_processes)
+                
+            except Exception as e:
+                print(f"Traceback: \n {traceback.format_exc()}")
+                print("Error in getting day0 decoder, please check the data")
+                raise e
+        
         # Split data
         # Train-Test split
         self.percent_data = self.split_data()
         
-        # Score keepers
-        self.fixed_decoder_scores = None
-        self.pca_decoder_scores = None
-        self.cca_decoder_scores = None
-        self.r_scores = None
-        self.pinv_scores = None
-    
         print("Finished initializing DecodersComparison object - Test4")
-        
+    
     def load_data(self, path):
         self.data_dict, self.sorted_keys = load_data_from_folder(path=path)
     
     def assign_data(self, cp1_index, cp2_index):
-        self.cp1 = self.data_dict[self.sorted_keys[cp1_index]]
-        self.cp2_original = self.data_dict[self.sorted_keys[cp2_index]]
+        self.cp1 = copy.deepcopy(self.data_dict[self.sorted_keys[cp1_index]])
+        self.cp2_original = copy.deepcopy(self.data_dict[self.sorted_keys[cp2_index]])
         
         self.cp2 = copy.deepcopy(self.cp2_original)
         self.cp2_test = copy.deepcopy(self.cp2_original)
         print('Data assigned!')
     
+    def choose_data_from_list(self, cp1_list_index=None, cp2_list_index=None):
+        if cp1_list_index is not None:
+            self.cp1.crop_list = self.cp1.crop_list[cp1_list_index]
+            self.cp1.data['angles'] = [self.cp1.data['angles'][cp1_list_index]]
+            self.cp1.data['rates'] = [self.cp1.data['rates'][cp1_list_index]]
+            self.cp1.data['coords'] = [self.cp1.data['coords'][cp1_list_index]]
+            print('Data cp1 re-assigned!')
+        
+        if cp2_list_index is not None:
+            self.cp2_original.crop_list = self.cp2_original.crop_list[cp2_list_index]
+            self.cp2_original.data['angles'] = [self.cp2_original.data['angles'][cp2_list_index]]
+            self.cp2_original.data['rates'] = [self.cp2_original.data['rates'][cp2_list_index]]
+            self.cp2_original.data['coords'] = [self.cp2_original.data['coords'][cp2_list_index]]
+            self.cp2 = copy.deepcopy(self.cp2_original)
+            self.cp2_test = copy.deepcopy(self.cp2_original)
+            print('Data cp2 re-assigned!')
+        
+    def reassign_day0_decoder(self, cp1_list_index=None, cp2_list_index=None):
+        self.assign_data(cp1_index=self.cp1_index, cp2_index=self.cp2_index)
+        self.choose_data_from_list(cp1_list_index=cp1_list_index, cp2_list_index=cp2_list_index)
+        # Day-0 decoder stuffs
+        self.day0_decoder, self.day0_transformer, self.day0_decoder_no_offset, self.offset, self.day0_decoder_scale = self.get_day0_decoder()
+        
     # Function to split the data into train and test sets
     def split_data(self):
         # split only the cp2 data
@@ -273,6 +316,55 @@ class DecodersComparison:
     
     # Get regression fit score
     def get_regression_fit_score(self, temp_cca, temp_cca_transformer, sub_x, sub_y):
+        """
+        :param temp_cca: PCA transformer to transform subsampled rates data
+        :param temp_cca_transformer: CCA transformer to transform PCA subsampled data to day-0 shape and back to the original space
+        :param sub_x: Subsampled rates data
+        :param sub_y: Target variable data
+        :return: VAF score
+
+        This method calculates the variance accounted for (VAF) score for a regression fit between the subsampled rates data (sub_x)
+        and the target variable data (sub_y).
+
+        The method performs the following steps:
+        1. Perform PCA on the subsampled rates data
+        2. Transform the PCA subsample to day-0 shape using the provided CCA transformer (temp_cca_transformer)
+        3. Transform the data back to the original space
+        4. Scale the transformed data using StandardScaler
+        5. Format the scaled data
+        6. Perform ridge regression fit on the scaled data using the provided day-0 decoder (self.day0_decoder_scale)
+        7. Apply PCA to the test data and squeeze it
+        8. Get the angles from the test data
+        9. Transform the test data using the provided CCA transformer
+        10. Scale the transformed test data
+        11. Format the scaled test data
+        12. Apply the Wiener filter on the test data using the fitted regression weights
+        13. Calculate the VAF score between the filtered test data and the target variable data
+
+        If any exception occurs during the execution of the method, the traceback is printed and None is returned along with the exception.
+
+        Note: This method assumes that the following imports and objects are available:
+        - copy (import)
+        - numpy as np (import)
+        - ProcessPoolExecutor, ThreadPoolExecutor, as_completed (from concurrent.futures)
+        - StandardScaler (from sklearn.preprocessing)
+        - utils (from src.utils)
+        - wiener_filter (from src.wiener_filter)
+        - datetime (import)
+        - self.cp2_test (a copy of self.cp2)
+        - self.cp2 (a copy of self.cp2)
+        - self.pca_dims (number of dimensions for PCA transformation)
+        - self.day0_decoder_scale (day-0 decoder weights)
+
+        Example usage:
+            comp = DecodersComparison()
+            temp_cca = ...
+            temp_cca_transformer = ...
+            sub_x = ...
+            sub_y = ...
+            result = comp.get_regression_fit_score(temp_cca, temp_cca_transformer, sub_x, sub_y)
+            vaf_score, error = result
+        """
         try:
             # sub_x_pca [=] subsampled rates data in PCA space
             # apply PCA to subsampled data
@@ -538,10 +630,12 @@ class DecodersComparison:
         self.fixed_decoder_scores = fixed_decoder_scores
         self.r_scores = r_scores
         self.pinv_scores = pinv_scores
+        self.number_of_gaits = number_of_gaits
+        self.score_dicts = scores_dict
         
         return scores_dict
     
-    def plot_vaf_comparison_multiple(self, number_of_gaits, title_str, path, max_gait=65, min_gait=0, ylim=None):
+    def plot_vaf_comparison_multiple(self, title_str, path, number_of_gaits=None, max_gait=65, min_gait=0, ylim=None):
         """
         Plots the VAF (Variance Accounted For) comparison for different decoders.
 
@@ -560,7 +654,9 @@ class DecodersComparison:
         Returns:
         None
         """
-        
+        if number_of_gaits is None:
+            number_of_gaits = self.number_of_gaits
+            
         plt.close("all")
         # Font data for exporting figure
         plt.rcParams['pdf.fonttype'] = 42

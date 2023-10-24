@@ -79,9 +79,20 @@ path_N9 = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/remove_channels
 path_N5 = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/remove_channels_pickles/n5_removed_channels'
 path_N6 = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/remove_channels_pickles/n6_removed_channels'
 path_rollie = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/rollie - corrected calibrations'
+path_rollie_pickle = '/Users/sam/Library/CloudStorage/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/rollie_pickle'
 saving_path = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data'
 
 subsample_list = produce_subsample_list()
-# decoder_N9 = DecodersComparison(cp1_index=0, cp2_index=1, subsample_list=subsample_list, path=path_N9)
 
-process_path(path_rollie, saving_path)
+current_cp1_index = 2
+current_cp2_index = 3
+for current_cp2_index in range(3, 8):
+    decoder_rollie = DecodersComparison(cp1_index=current_cp1_index, cp2_index=current_cp2_index, pca_dims=8, subsample_list=subsample_list, path=path_rollie_pickle,
+                                        sort_func=lambda x: datetime.strptime(x.split('-')[2], ' %m%d%y'))
+    decoder_rollie.reassign_day0_decoder(cp1_list_index=0, cp2_list_index=1)
+    decoder_rollie.compare_decoders()
+    decoder_rollie.plot_vaf_comparison_multiple(title_str=f'Rollie - VAF for Different Decoders - Multiple - Parallelize - {8} PCA Dims - {current_cp1_index} - {current_cp2_index}', path=saving_path)
+
+
+# decoder_N9 = DecodersComparison(cp1_index=0, cp2_index=1, subsample_list=subsample_list, path=path_N9)
+# process_path(path_rollie, saving_path)
