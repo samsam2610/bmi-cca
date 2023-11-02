@@ -12,6 +12,7 @@ from src.phase_decoder_support import *
 from sklearn.metrics import r2_score
 from scipy.signal import resample, find_peaks
 from sklearn.decomposition import PCA
+from sklearn.model_selection import train_test_split
 import scipy.io as sio
 import cv2
 import copy
@@ -500,6 +501,19 @@ class CortProcessor:
         return response
     
     def get_gait_indices(self, Y=None, metric_angle='limbfoot'):
+        """
+        This takes a kinematic variable, and returns indices where each peak is
+        found. It also returns the average number of samples between each
+        peaks.
+
+        If passing in without parameter, it uses the 3rd angle measurement,
+        which is usually the limbfoot angle.
+
+        This is mainly used as a starter method for other method.
+        Divide_into_gaits for instance takes in these indices, and divides both
+        the kinematics and rates into gait cycles.
+        """
+        
         if Y is None:
             Y_ = self.data['angles']
         else:
@@ -531,18 +545,19 @@ class CortProcessor:
         return gait_indices, avg_gait_samples
     
     def deprec_get_gait_indices(self, Y=None, metric_angle='limbfoot'):
-        '''
+        """
         This takes a kinematic variable, and returns indices where each peak is
         found. It also returns the average number of samples between each
-        peaks. 
+        peaks.
 
         If passing in without parameter, it uses the 3rd angle measurement,
-        which is usually the limbfoot angle. 
+        which is usually the limbfoot angle.
 
         This is mainly used as a starter method for other method.
         Divide_into_gaits for instance takes in these indices, and divides both
         the kinematics and rates into gait cycles.
-        '''
+        """
+        
         if Y is None:
             Y_ = self.data['angles']
         else:
@@ -796,11 +811,59 @@ class CortProcessor:
             phase_list.append(phase)
         
         return phase_list  # use np.hstack on output to get continuous
+
+    def get_optimal_pca_dims(self, starting_dims=3, ending_dims=32, step=1, plot_optimal_dims=False, plot_name='cp1'):
+        X_train, X_test, Y_train, Y_test = train_test_split(self.data['rates'][0], self.data['angles'][0], test_size=0.2, random_state=0)
+        Y_test = np.squeeze(np.array(Y_test))
+        
+        score_tracker = []
+        for current_dims in range(starting_dims, ending_dims, step):
+            sub_x_pca = self.apply_PCA(dims=current_dims, X=[X_train])  # don't np.squeeze this line
+        
+            # save PCA transformation
+            pca_object = self.pca_object
+        
+            # train PCA decoder
+            temp_h, _, _, _ = self.decode_angles(X=sub_x_pca, Y=[Y_train])
+        
+            # test PCA decoder
+            test_x_pca = np.squeeze(np.array(self.apply_PCA(dims=current_dims, X=[X_test], transformer=pca_object)))
+            test_x_pca_format, test_y_format = format_data(test_x_pca, Y_test)
+            
+            temp_y = test_wiener_filter(test_x_pca_format, temp_h)
+            
+            vaf_score = vaf(test_y_format[:, 1], temp_y[:, 1])
+            score_tracker.append([current_dims, vaf_score])
+            
+            samples = test_x_pca_format.shape[0]
+            
+            if plot_optimal_dims:
+                # Font data for exporting figure
+                plt.rcParams['pdf.fonttype'] = 42
+                plt.rcParams['ps.fonttype'] = 42
+
+                ts = np.linspace(0, (samples*50)/1000, samples)
+                fig, ax = plt.subplots()
+                fig.set_size_inches(10, 2)
+                ax.plot(ts, test_y_format[:,1], color='black')
+                ax.plot(ts, temp_y[:,1], color='red')
+                fig.savefig(f'/Users/sam/Library/CloudStorage/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/log/{plot_name}_optimal_PCA_dim_{current_dims}.pdf', transparent=True)
+                
+        score_tracker.sort(key=lambda x: (-x[1], x[0]))
+        optimal_dims, highest_vaf_score = score_tracker[0]
+
+        return optimal_dims, highest_vaf_score, score_tracker
     
     def apply_PCA(self, dims=None, X=None, transformer=None):
-        '''
-        this works now?
-        '''
+        """
+        Apply Principal Component Analysis (PCA) to the given data.
+
+        :param dims: The number of principal components to keep or the proportion of variance to be explained. If not provided, the default value is 0.95, indicating that 95% of the variance should be explained.
+        :param X: The input data to be transformed. If not provided, the data stored in self.data['rates'] will be used.
+        :param transformer: A pre-trained PCA object to be used for transforming the data. If not provided, a new PCA object will be created and trained on the input data.
+        :return: The transformed data after applying PCA.
+
+        """
         if X is None:
             X = self.data['rates']
         if dims is None:

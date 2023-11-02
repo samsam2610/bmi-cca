@@ -26,15 +26,16 @@ from sklearn.linear_model import Ridge
 import os
 from itertools import cycle, islice
 import copy
+import itertools
 
 
 def test_func():
     print('test_func')
 
 
-def produce_subsample_list(start=0.005, step=0.005, big_step=0.05):
-    list1 = np.arange(start, .2, step)
-    list2 = np.arange(list1[-1] + big_step, 1, big_step)
+def produce_subsample_list(start=0.005, small_end=0.2, big_end=1, small_step=0.005, big_step=0.05):
+    list1 = np.arange(start, small_end, small_step)
+    list2 = np.arange(list1[-1] + big_step, big_end, big_step)
     subsample_list = [*list1, *list2]
     # subsample_list = np.arange(0.005, 1, .05)
     # print(len(subsample_list))
@@ -80,19 +81,30 @@ path_N5 = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/remove_channels
 path_N6 = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/remove_channels_pickles/n6_removed_channels'
 path_rollie = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/rollie - corrected calibrations'
 path_rollie_pickle = '/Users/sam/Library/CloudStorage/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/rollie_pickle'
-saving_path = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data'
+saving_path = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/log'
 
-subsample_list = produce_subsample_list()
+subsample_list = produce_subsample_list(big_end=0.5)
 
-current_cp1_index = 2
-current_cp2_index = 3
-for current_cp2_index in range(3, 8):
-    decoder_rollie = DecodersComparison(cp1_index=current_cp1_index, cp2_index=current_cp2_index, pca_dims=8, subsample_list=subsample_list, path=path_rollie_pickle,
+# Get list of combinations for cp1 and cp2 index
+numbers = list(range(1, 13))
+# Generate all possible combinations of two numbers
+combinations = list(itertools.combinations(numbers, 2))
+
+# Filter combinations where the first number is smaller than the second one
+valid_combinations = [combo for combo in combinations if combo[0] < combo[1]]
+
+
+current_cp1_index = 4
+current_cp2_index = 5
+current_pca_dims = 12
+for (current_cp1_index, current_cp2_index) in valid_combinations:
+
+    decoder_rollie = DecodersComparison(cp1_index=current_cp1_index, cp2_index=current_cp2_index, pca_dims=current_pca_dims, subsample_list=subsample_list, path=path_rollie_pickle,
                                         sort_func=lambda x: datetime.strptime(x.split('-')[2], ' %m%d%y'))
-    decoder_rollie.reassign_day0_decoder(cp1_list_index=0, cp2_list_index=1)
+    decoder_rollie.reassign_day0_decoder(cp1_list_index=0, cp2_list_index=0)
     decoder_rollie.compare_decoders()
-    decoder_rollie.plot_vaf_comparison_multiple(title_str=f'Rollie - VAF for Different Decoders - Multiple - Parallelize - {8} PCA Dims - {current_cp1_index} - {current_cp2_index}', path=saving_path)
+    decoder_rollie.plot_vaf_comparison_multiple(title_str=f'Rollie - VAF for Different Decoders - {current_pca_dims} PCA Dims - {current_cp1_index} - {current_cp2_index} - {decoder_rollie.elapsed_time} days', path=saving_path)
 
 
 # decoder_N9 = DecodersComparison(cp1_index=0, cp2_index=1, subsample_list=subsample_list, path=path_N9)
-# process_path(path_rollie, saving_path)
+# process_path(path_rollie, path_rollie_pickle)

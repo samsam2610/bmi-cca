@@ -113,6 +113,7 @@ class DecodersComparison:
     def __init__(self, cp1_index, cp2_index, subsample_list, path=None, data_dict=None, sorted_keys=None, step=0.005,
                  pca_dims=8, split_ratio=0.8, num_processes=6, sort_func=None, multiThread=False, multiProcess=False):
         
+        self.elapsed_time = None  # the time elapsed between the cp1 and cp2
         self.pca_dims = pca_dims
         self.split_ratio = split_ratio
         self.subsample_list = subsample_list
@@ -133,7 +134,7 @@ class DecodersComparison:
         self.r_scores = None
         self.pinv_scores = None
         self.number_of_gaits = None
-        self.score_dicts = None # this one contains all the above scores for computational purposes
+        self.score_dicts = None  # this one contains all the above scores for computational purposes
         
         # Load data
         # If path is specified, load data from folder and ignore data_dict and sorted_keys
@@ -160,8 +161,9 @@ class DecodersComparison:
                 self.choose_data_from_list(cp1_list_index=0, cp2_list_index=0)
                 # Day-0 decoder stuffs
                 self.day0_decoder, self.day0_transformer, self.day0_decoder_no_offset, self.offset, self.day0_decoder_scale = self.get_day0_decoder()
-                self.subsample_subgroups, self.subsample_subgroups_index = split_range_into_groups(subsample_list, num_processes)
-                
+                self.subsample_subgroups, self.subsample_subgroups_index = split_range_into_groups(subsample_list,
+                                                                                                   num_processes)
+            
             except Exception as e:
                 print(f"Traceback: \n {traceback.format_exc()}")
                 print("Error in getting day0 decoder, please check the data")
@@ -170,7 +172,10 @@ class DecodersComparison:
         # Split data
         # Train-Test split
         self.percent_data = self.split_data()
-        
+        self.get_elapsed_time(cp1_index=cp1_index, cp2_index=cp2_index)
+       
+        self.cp1_optimal_dims, self.cp1_highest_vaf_score, self.cp1_score_tracker = self.cp1.get_optimal_pca_dims()
+        self.cp2_optimal_dims, self.cp2_highest_vaf_score, self.cp2_score_tracker = self.cp2.get_optimal_pca_dims()
         print("Finished initializing DecodersComparison object - Test4")
     
     def load_data(self, path):
@@ -183,6 +188,15 @@ class DecodersComparison:
         self.cp2 = copy.deepcopy(self.cp2_original)
         self.cp2_test = copy.deepcopy(self.cp2_original)
         print('Data assigned!')
+    
+    def get_elapsed_time(self, cp1_index, cp2_index, date_format="%m%d%y"):
+        cp1_time = self.sorted_keys[cp1_index][-6:]
+        cp1_time = datetime.strptime(cp1_time, date_format)
+        cp2_time = self.sorted_keys[cp2_index][-6:]
+        cp2_time = datetime.strptime(cp2_time, date_format)
+        self.elapsed_time = (cp2_time - cp1_time).days
+        
+        return self.elapsed_time
     
     def choose_data_from_list(self, cp1_list_index=None, cp2_list_index=None):
         if cp1_list_index is not None:
@@ -200,13 +214,20 @@ class DecodersComparison:
             self.cp2 = copy.deepcopy(self.cp2_original)
             self.cp2_test = copy.deepcopy(self.cp2_original)
             print('Data cp2 re-assigned!')
-        
+    
     def reassign_day0_decoder(self, cp1_list_index=None, cp2_list_index=None):
+        """
+        Reassigns the day 0 decoder based on the given parameters.
+
+        :param cp1_list_index: The index of the CP1 list to use for reassigning the day 0 decoder. (default: None)
+        :param cp2_list_index: The index of the CP2 list to use for reassigning the day 0 decoder. (default: None)
+        :return: None
+        """
         self.assign_data(cp1_index=self.cp1_index, cp2_index=self.cp2_index)
         self.choose_data_from_list(cp1_list_index=cp1_list_index, cp2_list_index=cp2_list_index)
         # Day-0 decoder stuffs
         self.day0_decoder, self.day0_transformer, self.day0_decoder_no_offset, self.offset, self.day0_decoder_scale = self.get_day0_decoder()
-        
+    
     # Function to split the data into train and test sets
     def split_data(self):
         # split only the cp2 data
@@ -237,6 +258,12 @@ class DecodersComparison:
     
     # Get PCA decoder score
     def get_pca_decoder_score(self, sub_x, sub_y, test_y):
+        """
+        :param sub_x: cp_2 sub-sampled rates data for applying PCA.
+        :param sub_y: cp_2 sub-sampled angles for training PCA decoder.
+        :param test_y: The target variable corresponding to the test data for calculating VAF score.
+        :return: The VAF score and None, or None and the exception if an error occurs during the computation.
+        """
         try:
             # apply PCA just using sub-sampled data on the rates (x) data
             cp2_test = copy.deepcopy(self.cp2_test)
@@ -314,8 +341,8 @@ class DecodersComparison:
             print(f"Traceback: \n {traceback.format_exc()}")
             return None, e, temp_cca, temp_cca_transformer
     
-    # Get regression fit score
-    def get_regression_fit_score(self, temp_cca, temp_cca_transformer, sub_x, sub_y):
+    # Get preloaded fit score
+    def get_preloaded_fit_score(self, temp_cca, temp_cca_transformer, sub_x, sub_y):
         """
         :param temp_cca: PCA transformer to transform subsampled rates data
         :param temp_cca_transformer: CCA transformer to transform PCA subsampled data to day-0 shape and back to the original space
@@ -514,11 +541,11 @@ class DecodersComparison:
                         f" Failed cca decoder - {e} - gaits #: {num_gaits}, subsample index #: {(i + 1)}/{len(subsample_list)}, group #: {index_group}, step #: {idx}/{max_idx}, slice #: {slice_sample}, step #: {step_sample}, start: {k}, end: {end_slice}\n")
                     print(f"Traceback: \n {traceback.format_exc()}")
                 
-                # Regression fit
+                # CCA aligned preloaded decoders
                 try:
-                    vaf_score, error_message = self.get_regression_fit_score(temp_cca=temp_cca,
-                                                                             temp_cca_transformer=temp_cca_transformer,
-                                                                             sub_x=sub_x, sub_y=sub_y)
+                    vaf_score, error_message = self.get_preloaded_fit_score(temp_cca=temp_cca,
+                                                                            temp_cca_transformer=temp_cca_transformer,
+                                                                            sub_x=sub_x, sub_y=sub_y)
                     if vaf_score is not None:
                         r_scores[sub_idx].append(vaf_score)
                     else:
@@ -529,7 +556,7 @@ class DecodersComparison:
                         f" Failed regression fit - {e} - gaits #: {num_gaits}, subsample index #: {(i + 1)}/{len(subsample_list)}, group #: {index_group}, step #: {idx}/{max_idx}, slice #: {slice_sample}, step #: {step_sample}, start: {k}, end: {end_slice}\n")
                     print(f"Traceback: \n {traceback.format_exc()}")
                 
-                # Pinv fit
+                # Linear regression fits
                 try:
                     cp2_test = copy.deepcopy(cp2_test_raw)
                     pinv_clf, _ = temp_cca.apply_pinv_transform(x=sub_x[0], y=sub_y[0], decoder=day0_decoder)
@@ -656,7 +683,7 @@ class DecodersComparison:
         """
         if number_of_gaits is None:
             number_of_gaits = self.number_of_gaits
-            
+        
         plt.close("all")
         # Font data for exporting figure
         plt.rcParams['pdf.fonttype'] = 42
@@ -730,7 +757,9 @@ class DecodersComparison:
         ax1.set_xlabel('Number of Gait Cycles Trained On')
         ax1.set_ylabel('VAF')
         plt.title(title_str)
-        plt.show()
+        # Get the current datetime in the specified format
+        current_datetime = datetime.now().strftime('%Y%m%d-%H%M')
         
-        pdf_file_path = os.path.join(path, title_str + '.pdf')
+        pdf_file_path = os.path.join(path, f'{title_str}_{current_datetime}.pdf')
         plt.savefig(pdf_file_path)
+        plt.show()
