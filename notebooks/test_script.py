@@ -33,7 +33,7 @@ def test_func():
     print('test_func')
 
 
-def produce_subsample_list(start=0.005, small_end=0.2, big_end=1, small_step=0.005, big_step=0.05):
+def produce_subsample_list(start=0.005, small_end=0.2, big_end=1.0, small_step=0.005, big_step=0.05):
     list1 = np.arange(start, small_end, small_step)
     list2 = np.arange(list1[-1] + big_step, big_end, big_step)
     subsample_list = [*list1, *list2]
@@ -83,28 +83,62 @@ path_rollie = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/rollie - co
 path_rollie_pickle = '/Users/sam/Library/CloudStorage/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/rollie_pickle'
 saving_path = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/log'
 
-subsample_list = produce_subsample_list(big_end=0.5)
 
-# Get list of combinations for cp1 and cp2 index
-numbers = list(range(1, 13))
-# Generate all possible combinations of two numbers
-combinations = list(itertools.combinations(numbers, 2))
-
-# Filter combinations where the first number is smaller than the second one
-valid_combinations = [combo for combo in combinations if combo[0] < combo[1]]
-
-
-current_cp1_index = 4
-current_cp2_index = 5
-current_pca_dims = 12
-for (current_cp1_index, current_cp2_index) in valid_combinations:
-
-    decoder_rollie = DecodersComparison(cp1_index=current_cp1_index, cp2_index=current_cp2_index, pca_dims=current_pca_dims, subsample_list=subsample_list, path=path_rollie_pickle,
-                                        sort_func=lambda x: datetime.strptime(x.split('-')[2], ' %m%d%y'))
-    decoder_rollie.reassign_day0_decoder(cp1_list_index=0, cp2_list_index=0)
-    decoder_rollie.compare_decoders()
-    decoder_rollie.plot_vaf_comparison_multiple(title_str=f'Rollie - VAF for Different Decoders - {current_pca_dims} PCA Dims - {current_cp1_index} - {current_cp2_index} - {decoder_rollie.elapsed_time} days', path=saving_path)
+def test_decoder():  # Saturday, 04 November 2023 11:03
+    subsample_list = produce_subsample_list(big_end=0.5)
+    
+    # Get list of combinations for cp1 and cp2 index
+    numbers = list(range(1, 13))
+    # Generate all possible combinations of two numbers
+    combinations = list(itertools.combinations(numbers, 2))
+    
+    # Filter combinations where the first number is smaller than the second one
+    valid_combinations = [combo for combo in combinations if combo[0] < combo[1]]
+    
+    current_cp1_index = 4
+    current_cp2_index = 5
+    current_pca_dims = 12
+    for (current_cp1_index, current_cp2_index) in valid_combinations:
+        decoder_rollie = DecodersComparison(cp1_index=current_cp1_index, cp2_index=current_cp2_index,
+                                            pca_dims=current_pca_dims, subsample_list=subsample_list,
+                                            path=path_rollie_pickle,
+                                            sort_func=lambda x: datetime.strptime(x.split('-')[2], ' %m%d%y'))
+        decoder_rollie.reassign_day0_decoder(cp1_list_index=0, cp2_list_index=0)
+        decoder_rollie.compare_decoders()
+        decoder_rollie.plot_vaf_comparison_multiple(
+            title_str=f'Rollie - VAF for Different Decoders - {current_pca_dims} PCA Dims - {current_cp1_index} - {current_cp2_index} - {decoder_rollie.elapsed_time} days',
+            path=saving_path)
 
 
 # decoder_N9 = DecodersComparison(cp1_index=0, cp2_index=1, subsample_list=subsample_list, path=path_N9)
 # process_path(path_rollie, path_rollie_pickle)
+
+def test_config():  # Saturday, 04 November 2023 11:03
+    import yaml
+    
+    # Function to load YAML file
+    def load_yaml_file(filepath):
+        with open(filepath, 'r') as file:
+            return yaml.safe_load(file)
+    
+    # Function to write YAML file
+    def write_yaml_file(filepath, data):
+        with open(filepath, 'w') as file:
+            yaml.safe_dump(data, file, default_flow_style=False, sort_keys=False)
+    
+    # Path to the YAML file
+    config_file_path = '/Users/sam/Library/CloudStorage/Dropbox/Tresch Lab/tmp/config.yaml'
+    
+    # Load the YAML file
+    config_data = load_yaml_file(config_file_path)
+    
+    # Modify the bodyparts
+    config_data['bodyparts'] = ['toes', 'ankle', 'knee']  # Example modification
+    config_data['dotsize'] = 5
+    config_data['TrainingFraction'] = [0.8]
+    config_data['default_net_type'] = 'resnet_101'
+    
+    # Write the updated YAML file back to disk
+    write_yaml_file(config_file_path, config_data)
+
+test_config()
