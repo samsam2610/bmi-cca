@@ -79,10 +79,11 @@ def process_path(base_path, saving_path):
 path_N9 = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/remove_channels_pickles/n9_removed_channels'
 path_N5 = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/remove_channels_pickles/n5_removed_channels'
 path_N6 = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/remove_channels_pickles/n6_removed_channels'
-path_rollie = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/rollie - corrected calibrations'
-path_rollie_pickle = '/Users/sam/Library/CloudStorage/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/rollie_pickle'
-saving_path = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/log'
-
+# path_rollie = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/rollie - corrected calibrations'
+# path_rollie_pickle = '/Users/sam/Library/CloudStorage/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/rollie_pickle'
+# saving_path = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/log'
+path_rollie_pickle = '/media/BMI-FES/Sam/rat-fes-data/rollie_pickle'
+saving_path = '/media/BMI-FES/Sam/rat-fes-data/log'
 
 def test_decoder():  # Saturday, 04 November 2023 11:03
     subsample_list = produce_subsample_list(big_end=0.5)
@@ -109,7 +110,7 @@ def test_decoder():  # Saturday, 04 November 2023 11:03
             title_str=f'Rollie - VAF for Different Decoders - {current_pca_dims} PCA Dims - {current_cp1_index} - {current_cp2_index} - {decoder_rollie.elapsed_time} days',
             path=saving_path)
 
-
+test_decoder()
 # decoder_N9 = DecodersComparison(cp1_index=0, cp2_index=1, subsample_list=subsample_list, path=path_N9)
 # process_path(path_rollie, path_rollie_pickle)
 
@@ -141,4 +142,4 @@ def test_config():  # Saturday, 04 November 2023 11:03
     # Write the updated YAML file back to disk
     write_yaml_file(config_file_path, config_data)
 
-test_config()
+# test_config()
