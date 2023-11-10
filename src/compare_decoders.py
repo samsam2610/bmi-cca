@@ -57,9 +57,8 @@ def load_data_from_folder(path, exporting_graph=False, raw_data=False,
     data_dict = {}
     file_list = []
     plt.close("all")
-    ignore_extensions = ('.pdf', '.DS_Store')
     for file in filenames:
-        if file.endswith(ignore_extensions):
+        if not (file.endswith('.mat') or file.endswith('.pickle')) or file.startswith('.'):
             continue  # ignore this file
         file_list.append(os.path.splitext(file)[0])
         
@@ -69,7 +68,9 @@ def load_data_from_folder(path, exporting_graph=False, raw_data=False,
             cp = CortProcessor(current_path)  # Load mat file from Filippe data
         else:
             with open(current_path, 'rb') as inp:
+                print(f"Loading {file}")
                 cp = pickle.load(inp)
+                
         
         # Add data object to dict with respected name
         dict_name = '_'.join(os.path.splitext(file)[0].split('_')[:2])
