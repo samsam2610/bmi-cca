@@ -355,9 +355,9 @@ class DecodersComparison:
         and the target variable data (sub_y).
 
         The method performs the following steps:
-        1. Perform PCA on the subsampled rates data
-        2. Transform the PCA subsample to day-0 shape using the provided CCA transformer (temp_cca_transformer)
-        3. Transform the data back to the original space
+        1. Perform PCA on the subsampled target-date data
+        2. Transform the aligned target-date to source-date data shape using the provided CCA transformer (temp_cca_transformer)
+        3. Transform the target-data data back to the original space
         4. Scale the transformed data using StandardScaler
         5. Format the scaled data
         6. Perform ridge regression fit on the scaled data using the provided day-0 decoder (self.day0_decoder_scale)
@@ -528,8 +528,8 @@ class DecodersComparison:
                 
                 # Get CCA decoder score
                 try:
-                    vaf_score, error_message, temp_cca, temp_cca_transformer = self.get_cca_decoder_score(sub_x=sub_x,
-                                                                                                          sub_y=sub_y)
+                    vaf_score, error_message, temp_cca, temp_cca_transformer = self.get_cca_decoder_score(sub_x=copy.deepcopy(sub_x),
+                                                                                                          sub_y=copy.deepcopy(sub_y))
                     if vaf_score is not None:
                         cca_decoder_scores[sub_idx].append(vaf_score)
                         print(
@@ -546,7 +546,7 @@ class DecodersComparison:
                 try:
                     vaf_score, error_message = self.get_preloaded_fit_score(temp_cca=temp_cca,
                                                                             temp_cca_transformer=temp_cca_transformer,
-                                                                            sub_x=sub_x, sub_y=sub_y)
+                                                                            sub_x=copy.deepcopy(sub_x), sub_y=copy.deepcopy(sub_y))
                     if vaf_score is not None:
                         r_scores[sub_idx].append(vaf_score)
                     else:
@@ -560,7 +560,7 @@ class DecodersComparison:
                 # Linear regression fits
                 try:
                     cp2_test = copy.deepcopy(cp2_test_raw)
-                    pinv_clf, _ = temp_cca.apply_pinv_transform(x=sub_x[0], y=sub_y[0], decoder=day0_decoder)
+                    pinv_clf, _ = temp_cca.apply_pinv_transform(x=copy.deepcopy(sub_x[0]), y=copy.deepcopy(sub_y[0]), decoder=day0_decoder)
                     
                     # test
                     raw_test_x = cp2_test.data['rates'][0]
