@@ -177,6 +177,11 @@ class DecodersComparison:
        
         self.cp1_optimal_dims, self.cp1_highest_vaf_score, self.cp1_score_tracker = self.cp1.get_optimal_pca_dims()
         self.cp2_optimal_dims, self.cp2_highest_vaf_score, self.cp2_score_tracker = self.cp2.get_optimal_pca_dims()
+        if self.cp1_optimal_dims >= self.cp2_optimal_dims:
+            self.pca_dims = self.cp2_optimal_dims
+        else:
+            self.pca_dims = self.cp1_optimal_dims
+            
         print("Finished initializing DecodersComparison object - Test4")
     
     def load_data(self, path):
