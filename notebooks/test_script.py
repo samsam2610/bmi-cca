@@ -80,11 +80,15 @@ path_N9 = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/remove_channels
 path_N5 = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/remove_channels_pickles/n5_removed_channels'
 path_N6 = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/remove_channels_pickles/n6_removed_channels'
 # path_rollie = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/rollie - corrected calibrations'
-# path_rollie_pickle = '/Users/sam/Library/CloudStorage/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/rollie_pickle'
-# saving_path = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/log'
-path_rollie_pickle = '/media/BMI-FES/Sam/rat-fes-data/rollie_pickle'
-saving_path = '/media/BMI-FES/Sam/rat-fes-data/log'
+path_rollie_pickle = '/Users/sam/Library/CloudStorage/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/rollie_pickle'
+saving_path = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/log'
 
+
+# path_rollie_pickle = '/media/BMI-FES/Sam/rat-fes-data/rollie_pickle'
+# saving_path = '/media/BMI-FES/Sam/rat-fes-data/log'
+
+
+## Test Rollie data
 def test_decoder():  # Saturday, 04 November 2023 11:03
     subsample_list = produce_subsample_list(big_end=0.5)
     
@@ -96,22 +100,37 @@ def test_decoder():  # Saturday, 04 November 2023 11:03
     # Filter combinations where the first number is smaller than the second one
     valid_combinations = [combo for combo in combinations if combo[0] < combo[1]]
     
-    current_cp1_index = 4
-    current_cp2_index = 5
+    current_cp1_index = 1
+    current_cp2_index = 2
     current_pca_dims = 12
     for (current_cp1_index, current_cp2_index) in valid_combinations:
         decoder_rollie = DecodersComparison(cp1_index=current_cp1_index, cp2_index=current_cp2_index,
                                             pca_dims=current_pca_dims, subsample_list=subsample_list,
-                                            path=path_rollie_pickle,
+                                            saving_path=saving_path, data_path=path_rollie_pickle,
                                             sort_func=lambda x: datetime.strptime(x.split('-')[2], ' %m%d%y'))
         decoder_rollie.reassign_day0_decoder(cp1_list_index=0, cp2_list_index=0)
-        decoder_rollie.compare_decoders()
-        decoder_rollie.plot_vaf_comparison_multiple(
-            title_str=f'Rollie - VAF for Different Decoders - {current_pca_dims} PCA Dims - {current_cp1_index} - {current_cp2_index} - {decoder_rollie.elapsed_time} days',
-            path=saving_path)
+        
+        title_str = f'Rollie - VAF for Different Decoders - {current_pca_dims} PCA Dims - {current_cp1_index} - {current_cp2_index} - {decoder_rollie.elapsed_time} days'
+        decoder_rollie.visualize_gaits_comparison(
+            title_str=title_str)
+        # decoder_rollie.compare_decoders()
+        # decoder_rollie.plot_vaf_comparison_multiple(title_str=title_str, path=saving_path)
+
 
 test_decoder()
-# decoder_N9 = DecodersComparison(cp1_index=0, cp2_index=1, subsample_list=subsample_list, path=path_N9)
+
+## Test Filippe data
+def test_filippe_decoder():  # Thursday, 14 December 2023 00:32
+    subsample_list = produce_subsample_list(big_end=0.5)
+    decoder_N9 = DecodersComparison(cp1_index=0, cp2_index=1,
+                                    pca_dims=8, subsample_list=subsample_list, data_path=path_N9,
+                                    saving_path=saving_path)
+    title_str = f'N9 test'
+    decoder_N9.visualize_gaits_comparison(title_str=title_str)
+
+# test_filippe_decoder()
+
+
 # process_path(path_rollie, path_rollie_pickle)
 
 def test_config():  # Saturday, 04 November 2023 11:03

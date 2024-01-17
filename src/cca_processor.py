@@ -219,9 +219,15 @@ class CCAProcessor:
         return cp1_gait_x, cp1_gait_y, cp2_gait_x, cp2_gait_y
     
     def sort_and_align(self, sample_variance=5):
+        """
+        
+        :param sample_variance:
+        :return:
+        """
         
         print(self.check_same_kinematics())
         
+        # gait_x is rates and gait_y is angles
         cp1_gait_x, cp1_gait_y = self.cp1.divide_into_gaits(bool_resample=False)
         
         cp2_gait_x, cp2_gait_y = self.cp2.divide_into_gaits(bool_resample=False)

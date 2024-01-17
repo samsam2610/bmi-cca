@@ -509,6 +509,7 @@ class CortProcessor:
         If passing in without parameter, it uses the 3rd angle measurement,
         which is usually the limbfoot angle.
 
+        limbfoot angle = ['pelvis top', 'hip', 'MTP']
         This is mainly used as a starter method for other method.
         Divide_into_gaits for instance takes in these indices, and divides both
         the kinematics and rates into gait cycles.
@@ -544,64 +545,11 @@ class CortProcessor:
         
         return gait_indices, avg_gait_samples
     
-    def deprec_get_gait_indices(self, Y=None, metric_angle='limbfoot'):
-        """
-        This takes a kinematic variable, and returns indices where each peak is
-        found. It also returns the average number of samples between each
-        peaks.
-
-        If passing in without parameter, it uses the 3rd angle measurement,
-        which is usually the limbfoot angle.
-
-        This is mainly used as a starter method for other method.
-        Divide_into_gaits for instance takes in these indices, and divides both
-        the kinematics and rates into gait cycles.
-        """
-        
-        if Y is None:
-            Y_ = self.data['angles']
-        else:
-            assert isinstance(Y, list), 'Y must be a list'
-            Y_ = Y
-        
-        angle_number = self.angle_name_helper(metric_angle)
-        
-        gait_indices = []
-        samples_list = []
-        for angle in Y_:
-            if angle.ndim > 1:
-                angle = angle[:, angle_number]
-            temp_peaks, nada = find_peaks(angle, prominence=10, distance=5)
-            avg_ = np.average(angle[temp_peaks])
-            std_ = np.std(angle[temp_peaks])
-            
-            temp2_peaks = temp_peaks[np.argwhere(angle[temp_peaks] < avg_ + 30)]
-            temp2_peaks = np.squeeze(temp2_peaks)
-            peaks = temp2_peaks[np.argwhere(angle[temp2_peaks] > avg_ - 30)]
-            peaks = np.squeeze(peaks)
-            peaks = np.append(peaks, np.size(angle) - 1)
-            peaks = np.insert(peaks, 0, 0)
-            gait_indices.append(peaks)
-            samples_list.append(np.diff(peaks))
-        
-        if len(samples_list) > 1:
-            samples = np.concatenate(samples_list)
-        else:
-            samples = samples_list[0]
-        
-        avg_gait_samples = int(np.round(np.average(samples)))
-        
-        if Y is None:
-            self.gait_indices = gait_indices
-            self.avg_gait_samples = avg_gait_samples
-        
-        return gait_indices, avg_gait_samples
-    
     def divide_into_gaits(self, X=None, Y=None, gait_indices=None, avg_gait_samples=None, bool_resample=True):
-        '''
+        """
         this takes in X, which is usually rates, Y which is usually some
         kinematic variable, and indices, which tell you how to divide up the
-        data, and divides all the data up as lists. Since the originall X is
+        data, and divides all the data up as lists. Since the original X is
         already a list, it returns a list of list of lists. Confusing?
         
         if you don't pass any parameters, then get_gait_indices must be run
@@ -609,7 +557,7 @@ class CortProcessor:
 
         If you don't pass in X/Y paramters, it by default uses rates and
         angles, and then divides em up.
-        '''
+        """
         
         if gait_indices is None:
             gait_indices = self.gait_indices
@@ -631,7 +579,9 @@ class CortProcessor:
         
         X_gait = []
         Y_gait = []
-        
+       
+        #  The gait_indices is a list with only 1 element, hence subsequent call to X_gait and Y_gait needs
+        #  x_gait[0] and y_gait[0] respectively
         for i, trial_gait_index in enumerate(gait_indices):
             trial_rate_gait = []
             trial_angle_gait = []

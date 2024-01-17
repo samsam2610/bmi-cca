@@ -35,10 +35,10 @@ def split_range_into_groups(list_of_numbers, num_groups, step=1):
 def load_data_from_folder(path, exporting_graph=False, raw_data=False,
                           sorting_func=lambda x: datetime.strptime(x.split('_')[1], '%y%m%d')):
     """
-    Loads data from files in the specified folder path and returns a dictionary of data objects.
+    Loads data from files in the specified folder data_path and returns a dictionary of data objects.
 
     Parameters:
-    path (str): The path to the folder containing the data files.
+    data_path (str): The data_path to the folder containing the data files.
     exporting_graph (bool, optional): Whether to export a graph. Defaults to False.
     raw_data (bool, optional): Whether to load raw data. Defaults to False.
 
@@ -47,8 +47,8 @@ def load_data_from_folder(path, exporting_graph=False, raw_data=False,
     sorted_keys: list of keys for the above dict sorted by dates
 
     Examples:
-    path = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/remove_channels_pickles/n9_removed_channels'
-    data_dict, sorted_keys = load_data_from_folder(path=path)
+    data_path = '/Users/sam/Dropbox/Tresch Lab/CCA stuffs/rat-fes-data/remove_channels_pickles/n9_removed_channels'
+    data_dict, sorted_keys = load_data_from_folder(data_path=data_path)
     """
     filenames = os.listdir(path)
     
@@ -58,7 +58,7 @@ def load_data_from_folder(path, exporting_graph=False, raw_data=False,
     file_list = []
     plt.close("all")
     for file in filenames:
-        if not (file.endswith('.mat') or file.endswith('.pickle')) or file.startswith('.'):
+        if not (file.endswith('.mat') or file.endswith('.pickle') or file.endswith('pkl')) or file.startswith('.'):
             continue  # ignore this file
         file_list.append(os.path.splitext(file)[0])
         
@@ -111,7 +111,7 @@ def load_data_from_folder(path, exporting_graph=False, raw_data=False,
 
 
 class DecodersComparison:
-    def __init__(self, cp1_index, cp2_index, subsample_list, path=None, data_dict=None, sorted_keys=None, step=0.005,
+    def __init__(self, cp1_index, cp2_index, subsample_list, saving_path, data_path=None, data_dict=None, sorted_keys=None, step=0.005,
                  pca_dims=8, split_ratio=0.8, num_processes=6, sort_func=None, multiThread=False, multiProcess=False):
         
         self.elapsed_time = None  # the time elapsed between the cp1 and cp2
@@ -137,18 +137,21 @@ class DecodersComparison:
         self.number_of_gaits = None
         self.score_dicts = None  # this one contains all the above scores for computational purposes
         
+        # Visualizer
+        self.saving_path = saving_path
+        
         # Load data
-        # If path is specified, load data from folder and ignore data_dict and sorted_keys
-        if path is not None:
+        # If data_path is specified, load data from folder and ignore data_dict and sorted_keys
+        if data_path is not None:
             if sort_func is not None:
-                self.data_dict, self.sorted_keys = load_data_from_folder(path=path, sorting_func=sort_func)
+                self.data_dict, self.sorted_keys = load_data_from_folder(path=data_path, sorting_func=sort_func)
             else:
-                self.data_dict, self.sorted_keys = load_data_from_folder(path=path)
+                self.data_dict, self.sorted_keys = load_data_from_folder(path=data_path)
             self.assign_data(cp1_index=cp1_index, cp2_index=cp2_index)
-            print(f"Loaded data from {path}")
+            print(f"Loaded data from {data_path}")
         else:
             if data_dict is None or sorted_keys is None:
-                raise Exception("data_dict and sorted_keys must be specified if path is not specified")
+                raise Exception("data_dict and sorted_keys must be specified if data_path is not specified")
             
             self.data_dict = data_dict
             self.sorted_keys = sorted_keys
@@ -158,29 +161,33 @@ class DecodersComparison:
         if self.cp1 is None or self.cp2 is None or self.cp2_test is None:
             raise Exception("cp1, cp2, and cp2_test must be assigned before running the decoder comparison")
         else:
-            try:
+            if len(self.cp1.data['rates']) > 1 or len(self.cp2.data['rates']) > 1:
+                # This is for if there are multiple recordings for each day
                 self.choose_data_from_list(cp1_list_index=0, cp2_list_index=0)
-                # Day-0 decoder stuffs
-                self.day0_decoder, self.day0_transformer, self.day0_decoder_no_offset, self.offset, self.day0_decoder_scale = self.get_day0_decoder()
-                self.subsample_subgroups, self.subsample_subgroups_index = split_range_into_groups(subsample_list,
-                                                                                                   num_processes)
-            
-            except Exception as e:
-                print(f"Traceback: \n {traceback.format_exc()}")
-                print("Error in getting day0 decoder, please check the data")
-                raise e
         
+        try:
+            self.day0_decoder, self.day0_transformer, self.day0_decoder_no_offset, self.offset, self.day0_decoder_scale = self.get_day0_decoder()
+            self.subsample_subgroups, self.subsample_subgroups_index = split_range_into_groups(subsample_list,
+                                                                                               num_processes)
+    
+        except Exception as e:
+            print(f"Traceback: \n {traceback.format_exc()}")
+            print("Error in getting day0 decoder, please check the data")
+            raise e
+
         # Split data
         # Train-Test split
         self.percent_data = self.split_data()
         self.get_elapsed_time(cp1_index=cp1_index, cp2_index=cp2_index)
-       
-        self.cp1_optimal_dims, self.cp1_highest_vaf_score, self.cp1_score_tracker = self.cp1.get_optimal_pca_dims()
-        self.cp2_optimal_dims, self.cp2_highest_vaf_score, self.cp2_score_tracker = self.cp2.get_optimal_pca_dims()
-        if self.cp1_optimal_dims >= self.cp2_optimal_dims:
-            self.pca_dims = self.cp2_optimal_dims
-        else:
-            self.pca_dims = self.cp1_optimal_dims
+    
+        # Calculate optimal PCA dimensions
+        if pca_dims is None:
+            self.cp1_optimal_dims, self.cp1_highest_vaf_score, self.cp1_score_tracker = self.cp1.get_optimal_pca_dims()
+            self.cp2_optimal_dims, self.cp2_highest_vaf_score, self.cp2_score_tracker = self.cp2.get_optimal_pca_dims()
+            if self.cp1_optimal_dims >= self.cp2_optimal_dims:
+                self.pca_dims = self.cp2_optimal_dims
+            else:
+                self.pca_dims = self.cp1_optimal_dims
             
         print("Finished initializing DecodersComparison object - Test4")
     
@@ -196,12 +203,17 @@ class DecodersComparison:
         print('Data assigned!')
     
     def get_elapsed_time(self, cp1_index, cp2_index, date_format="%m%d%y"):
-        cp1_time = self.sorted_keys[cp1_index][-6:]
-        cp1_time = datetime.strptime(cp1_time, date_format)
-        cp2_time = self.sorted_keys[cp2_index][-6:]
-        cp2_time = datetime.strptime(cp2_time, date_format)
-        self.elapsed_time = (cp2_time - cp1_time).days
-        
+        try:
+            cp1_time = self.sorted_keys[cp1_index][-6:]
+            cp1_time = datetime.strptime(cp1_time, date_format)
+            cp2_time = self.sorted_keys[cp2_index][-6:]
+            cp2_time = datetime.strptime(cp2_time, date_format)
+            self.elapsed_time = (cp2_time - cp1_time).days
+        except Exception as e:
+            self.elapsed_time = None
+            print(f"Traceback: \n {traceback.format_exc()}")
+            print("Error in getting elapsed time, please check the data")
+            
         return self.elapsed_time
     
     def choose_data_from_list(self, cp1_list_index=None, cp2_list_index=None):
@@ -668,21 +680,32 @@ class DecodersComparison:
         
         return scores_dict
     
-    def plot_vaf_comparison_multiple(self, title_str, path, number_of_gaits=None, max_gait=65, min_gait=0, ylim=None):
+    def visualize_gaits_comparison(self, title_str):
+        
+        cp2 = copy.deepcopy(self.cp2)
+        cp1 = copy.deepcopy(self.cp1)
+        
+        cca_processor = CCAProcessor(cp1, cp2)
+        from src.cca_visualizer import CCAVisualizer
+        visualizer = CCAVisualizer(cca_object=cca_processor, saving_path=self.saving_path)
+        visualizer.plot_cca_gaits(title_string=title_str)
+    
+    def plot_vaf_comparison_multiple(self, title_str, path,
+                                     number_of_gaits=None, max_gait=65, min_gait=0, ylim=None, saving_path=None):
         """
         Plots the VAF (Variance Accounted For) comparison for different decoders.
 
         Parameters:
         number_of_gaits (int): The number of gaits to plot.
         title_str (str): The title string for the plot.
-        path (str): The path to save the plot.
+        data_path (str): The data_path to save the plot.
         max_gait (int, optional): The maximum gait number to include. Defaults to 65.
         ylim (tuple, optional): The limits for the y-axis as a tuple (bottom, top). Defaults to None.
         fixed_decoder_scores (list, optional): The scores of the fixed decoder. Defaults to None.
         pca_decoder_scores (list, optional): The scores of the PCA decoder. Defaults to None.
         cca_decoder_scores (list, optional): The scores of the CCA decoder. Defaults to None.
         r_scores (list, optional): The scores of the R decoder. Defaults to None.
-        pinv_scores (list, optional): The scores of the pinv decoder. Defaults to None.
+        pinv_scores (list, optional): The scores of the pinv decoder. Defaults to None. Linear regression
 
         Returns:
         None
@@ -752,7 +775,7 @@ class DecodersComparison:
                          label='preloaded decoder')
         if self.pinv_scores is not None:
             ax1.errorbar(num_gaits, pinv_scores_avg, yerr=pinv_scores_std, marker='+', color='tab:purple',
-                         label='pinv decoder')
+                         label='linear regression')
         
         ax1.legend(loc='lower right')
         
@@ -765,7 +788,9 @@ class DecodersComparison:
         plt.title(title_str)
         # Get the current datetime in the specified format
         current_datetime = datetime.now().strftime('%Y%m%d-%H%M')
-        
-        pdf_file_path = os.path.join(path, f'{title_str}_{current_datetime}.pdf')
+
+        if saving_path is None:
+            pdf_file_path = os.path.join(self.saving_path, f'{title_str}_{current_datetime}.pdf')
+        pdf_file_path = os.path.join(self.saving_path, f'{title_str}_{current_datetime}.pdf')
         plt.savefig(pdf_file_path)
         plt.show()
